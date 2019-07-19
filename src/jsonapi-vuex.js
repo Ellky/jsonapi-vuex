@@ -12,6 +12,7 @@ class RecordError extends Error {
     this.value = value
   }
 }
+// Hello.
 
 const STATUS_LOAD = 'LOADING'
 const STATUS_SUCCESS = 'SUCCESS'
