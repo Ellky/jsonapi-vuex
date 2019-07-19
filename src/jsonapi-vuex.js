@@ -12,7 +12,15 @@ class RecordError extends Error {
     this.value = value
   }
 }
+
 // Hello.
+
+const methods = {
+  get: 'get',
+  post: 'post',
+  patch: 'patch',
+  put: 'put',
+}
 
 const STATUS_LOAD = 'LOADING'
 const STATUS_SUCCESS = 'SUCCESS'
@@ -257,6 +265,49 @@ const actions = (api) => {
       action[jvtag + 'Id'] = actionId
       return action
     },
+    put: (context, args) => {
+      let [data, config] = unpackArgs(args)
+      data = cleanPatch(data, context.state)
+      const path = getURL(data)
+      const actionId = actionSequence(context)
+      const apiConf = {
+        method: methods.put,
+        url: path,
+        data: normToJsonapi(data),
+      }
+      merge(apiConf, config)
+      let action = api(apiConf)
+        .then((results) => {
+          if (results.status === 200 && results.data.hasOwnProperty('data')) {
+            let normalized = jsonapiToNorm(results.data.data)
+
+            if (!apiConf.disablePerform) {
+              context.commit('deleteRecord', data)
+              context.commit('addRecords', normalized)
+            }
+
+            data = normalized
+          } else {
+            // 200 (meta-only), or 204 (no resource) response
+            // Update the store record from the patch
+            context.commit('mergeRecords', data)
+          }
+
+          // NOTE: We deliberately process included records after any `deleteRecord` mutations
+          // to avoid deleting any included records that we just added.
+          if (!apiConf.disablePerform) {
+            processIncludedRecords(context, results)
+          }
+
+          return preserveJSON(context.getters.get(data), results.data)
+        })
+        .catch((error) => {
+          context.commit('setStatus', { id: actionId, status: STATUS_ERROR })
+          throw error
+        })
+      action[jvtag + 'Id'] = actionId
+      return action
+    },
     patch: (context, args) => {
       let [data, config] = unpackArgs(args)
       data = cleanPatch(data, context.state)
@@ -342,7 +393,7 @@ const actions = (api) => {
       return this.post
     },
     get update() {
-      return this.patch
+      return this.put
     },
   }
 }
